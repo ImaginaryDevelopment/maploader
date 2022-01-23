@@ -1,0 +1,1 @@
+dotnet watch build --project ".\Map Loader.sln"

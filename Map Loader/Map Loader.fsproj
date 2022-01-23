@@ -3,8 +3,7 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <AssemblyName>Map_Loader</AssemblyName>
-    <TargetFrameworkVersion Condition="'$(BuildingInsideVisualStudio)' != 'true'">net5.0</TargetFrameworkVersion>
-    <TargetFrameworkVersion Condition="'$(BuildingInsideVisualStudio)' == 'true'">net472</TargetFrameworkVersion>
+    <TargetFramework>net5.0</TargetFramework>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <WarningsAsErrors>3239;$(WarningsAsErrors)</WarningsAsErrors>
     <Name>Map Loader</Name>
@@ -12,32 +11,21 @@
   <ItemGroup>
     <Compile Include="AssemblyInfo.fs" />
     <Compile Include="Helpers.fs" />
+    <Compile Include="Reference.fs" />
     <Compile Include="Program.fs" />
     <None Include="App.config" />
     <Content Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
-    <Reference Include="BlackFox.ColoredPrintf">
-      <HintPath>..\packages\BlackFox.ColoredPrintf.1.0.3\lib\net45\BlackFox.ColoredPrintf.dll</HintPath>
-    </Reference>
-    <Reference Include="BlackFox.MasterOfFoo">
+    <!-- <Reference Include="BlackFox.MasterOfFoo">
       <HintPath>..\packages\BlackFox.MasterOfFoo.1.0.2\lib\net45\BlackFox.MasterOfFoo.dll</HintPath>
-    </Reference>
-    <Reference Include="FSharp.Core">
-      <HintPath>..\packages\FSharp.Core.4.7.0\lib\net45\FSharp.Core.dll</HintPath>
-    </Reference>
-    <Reference Include="mscorlib" />
-    <Reference Include="Newtonsoft.Json">
-      <HintPath>..\packages\Newtonsoft.Json.12.0.3\lib\net45\Newtonsoft.Json.dll</HintPath>
-    </Reference>
-    <Reference Include="System" />
-    <Reference Include="System.Core" />
-    <Reference Include="System.Numerics" />
-    <Reference Include="System.ValueTuple">
-      <Private>True</Private>
-    </Reference>
+    </Reference> -->
   </ItemGroup>
-  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+  <ItemGroup>
+    <PackageReference Include="BlackFox.ColoredPrintf" Version="1.0.5" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
+  </ItemGroup>
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it.
        Other similar extension points exist, see Microsoft.Common.targets.
   <Target Name="BeforeBuild">
   </Target>
