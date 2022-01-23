@@ -12,21 +12,29 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
-    - name: Setup MSBuild Path
-      uses: warrenbuckley/Setup-MSBuild@v1
-
-    # - uses: actions/setup-dotnet@v1
-    #  with:
-    #    dotnet-version: '5.0.x'
+    - uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: '5.0.x'
     # # Not specifying a version will attempt to install via global.json
     # - name: Use .NET Core global.json
     #   uses: actions/setup-dotnet@v1
     - run: 'dir env:'
-    #- run: dotnet --version
-    #- run: dotnet --list-sdks
-    #- run: dotnet tool restore
+    - run: dotnet --version
+    - run: dotnet --list-sdks
+    - run: dotnet tool restore
+    - name: Build
+      if: runner.os != 'Windows'
+      run: |
+        chmod +x ./build.sh
+        ./build.sh
+      env:
+        # Work around https://github.com/actions/setup-dotnet/issues/29
+        DOTNET_ROOT: ${{ runner.tool_cache }}/dncs/${{ matrix.dotnet }}/x64
+        CI: true
     - name: Build
       if: runner.os == 'Windows'
-      run: 'msbuild "Map Loader.sln"'
+      run: dotnet build
       env:
+        # Work around https://github.com/actions/setup-dotnet/issues/29
+        DOTNET_ROOT: ${{ runner.tool_cache }}/dncs/${{ matrix.dotnet }}/x64
         CI: true
