@@ -1,9 +1,11 @@
-﻿open System
+open System
 open System.IO
 open System.Net
 open System.Threading
 open Newtonsoft.Json
 open BlackFox.ColoredPrintf
+
+open MapLoader.Helpers
 
 let version = "a2"
 
@@ -32,9 +34,9 @@ let get_tf2_folder () =
     getting ()
 
 let Config =
-  if File.Exists "config.json" then
-    File.ReadAllText "config.json" |> JsonConvert.DeserializeObject<config>
-  else
+  match deserializeFile<config> "config.json" with
+  | Some x -> x
+  | None ->
     let tf2 = get_tf2_folder ()
     let cfg:config = {
       directories=[|
@@ -53,43 +55,46 @@ let unixtime = (DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1)).TotalSeconds 
 
 type mapinfo = {userid: int; forumid:int}
 type userinfo = {username:string; userid: int; display:int; updated:int64}
-let mutable cache = 
-  if File.Exists "cache.json" then
-    File.ReadAllText "cache.json" |> JsonConvert.DeserializeObject<Map<string,mapinfo>>
-  else
-    Map.empty
-let mutable users:Map<int,userinfo> = 
-  if File.Exists "users.json" then
-    File.ReadAllText "users.json" |> JsonConvert.DeserializeObject<Map<int,userinfo>>
-  else
-    Map.empty<int,userinfo>
+
+let mutable cache =
+  deserializeFile<Map<string,mapinfo>> "cache.json"
+  |> Option.defaultValue Map.empty
+
+let mutable users:Map<int,userinfo> =
+  deserializeFile<Map<int,userinfo>> "users.json"
+  |> Option.defaultValue Map.empty
 
 type apiforumuser = {id:int; username:string; custom_title:string; display:int; avatar:string; updated:int64}
 type apimapinfo = {map:string; url:string; notes:string; forum_id:int; forum_version:int; forum_icon:string; forum_username:string; forum_user_id:int; forum_tagline:string; forum_user:apiforumuser; discord_user_handle:string; added:int64}
 
 let maps,maps_files =
-  let files = 
+  let files =
     Config.directories
-    |> Array.toList
-    |> List.map(fun dir ->
-      Directory.GetFiles(dir)
-      |> Array.filter(fun x -> x.Contains(".bsp") && not (x.Contains(".bz2")))
-      |> Array.toList
+    |> Seq.collect(fun dir ->
+      Directory.GetFiles dir
+      |> Seq.filter(fun x -> x.Contains ".bsp" && not (x.Contains ".bz2"))
     )
-    |> List.reduce List.append
-  files
-  |> List.map(fun x -> Path.GetFileNameWithoutExtension(x))
-  |> List.sort
-  |> List.distinct
-  , files |> List.map (fun f -> new FileInfo(f))
+    |> List.ofSeq
+  let uNames =
+    files
+    |> List.map Path.GetFileNameWithoutExtension
+    |> List.sort
+    |> List.distinct
+  uNames, files |> List.map FileInfo
 
-let getUsername map =
-  if Config.showAuthor = false || (cache.ContainsKey map |> not) then ""
-  else
-    if cache.[map].userid = 0 || (users.ContainsKey (cache.[map].userid) |> not) then ""
-    else if display.ContainsKey (users.[cache.[map].userid].display) |> not then sprintf "| %s" users.[cache.[map].userid].username
-    else
-      sprintf "¦ $%s[%s]" display.[users.[cache.[map].userid].display] users.[cache.[map].userid].username
+let getUsername (mapName:string) =
+  if Config.showAuthor then
+    let x: string option =
+      maybe {
+        let! mi = cache |> Map.tryFind mapName
+        let! user = users |> Map.tryFind mi.userid
+        match display |> Map.tryFind user.display with
+        | None -> return sprintf "| %s" user.username
+        | Some d -> return sprintf "¦ $%s[%s]" d user.username
+      }
+    x
+  else None
+  |> Option.defaultValue ""
 
 let rec start () =
   let rec displayMaps top page (maps:string List) =
@@ -101,7 +106,6 @@ let rec start () =
       if Console.CursorTop = (top + ((1 + page) * Config.pageSize)) then
         colorprintfn "  $darkgray[[Load %i more...\]]" Config.pageSize
       else
-        //printf "  %s" (maps.[Console.CursorTop - top])
         colorprintf (ColorPrintFormat(sprintf "  %s %s" (maps.[Console.CursorTop - top]) (getUsername maps.[Console.CursorTop - top])))
       Console.CursorTop <- Console.CursorTop + i
       Console.CursorLeft <- 0
@@ -109,7 +113,6 @@ let rec start () =
         colorprintf "$green[> %s]                         " (maps.[Console.CursorTop - top])
         displayMaps top (page+1) maps
       else
-        //colorprintf "$green[> %s]" (maps.[Console.CursorTop - top])
         colorprintf (ColorPrintFormat(sprintf "$green[> %s] %s" (maps.[Console.CursorTop - top]) (getUsername maps.[Console.CursorTop - top])))
       Console.CursorLeft <- 0
 
@@ -144,9 +147,11 @@ let rec start () =
         proc.StartInfo.Arguments <- (sprintf "-hijack +map %s %s" (maps.[Console.CursorTop - top])) Config.launchOptions
         proc.Start() |> ignore
       | ConsoleKey.F when cache.ContainsKey (maps.[Console.CursorTop - top]) && cache.[maps.[Console.CursorTop - top]].forumid <> 0 ->
-        System.Diagnostics.Process.Start(sprintf @"https://tf2maps.net/downloads/%i/" cache.[maps.[Console.CursorTop - top]].forumid) |> ignore
+        sprintf @"https://tf2maps.net/downloads/%i/" cache.[maps.[Console.CursorTop - top]].forumid
+        |> launchBrowser
       | ConsoleKey.A when cache.ContainsKey (maps.[Console.CursorTop - top]) && cache.[maps.[Console.CursorTop - top]].forumid <> 0 ->
-        System.Diagnostics.Process.Start(sprintf @"https://tf2maps.net/downloads/authors/%i/" cache.[maps.[Console.CursorTop - top]].userid) |> ignore
+        sprintf @"https://tf2maps.net/downloads/authors/%i/" cache.[maps.[Console.CursorTop - top]].userid
+        |> launchBrowser
       | ConsoleKey.Escape ->
         Console.CursorTop <- (top + ((1 + page) * Config.pageSize) - (if _m.Length < Config.pageSize then Config.pageSize - _m.Length + 1 else 0)) + 1
         colorprintfn "$yellow[Exiting current search]"
@@ -237,19 +242,10 @@ let rec start () =
       let message = sprintf "%s%s%s" (firstDesc |> List.map(fun x -> sprintf "$green[%s]" x) |> String.concat "$gray[, ]") (if firstDesc.Length > 0 && lastDesc.Length > 0 then "$gray[ where ]" else "") (lastDesc |> List.map(fun x -> sprintf "$green[%s]" x) |> String.concat "$gray[, ]")
       colorprintfn (ColorPrintFormat(message))
       new System.Text.RegularExpressions.Regex(output)
-  
-  (*let load_map_files () =
-    if maps_files.Length = 0 then
-      //colorprintfn "$yellow[Loading file info]"
-      maps_files <-
-        maps
-        |> List.map (fun f -> new FileInfo(f))
-        //|> Array.toList*)
-  //try
+
   Console.CursorVisible <- true
   printf "Enter query to filter maps by: "
   Console.ForegroundColor <- ConsoleColor.Cyan
-  //let filter = new System.Text.RegularExpressions.Regex(Console.ReadLine())
   let command = Console.ReadLine()
   if command.StartsWith "@" then
     if command.Split(' ').Length <> 2 then
@@ -274,7 +270,7 @@ let rec start () =
         start ()
   else
     let filter = parseCommand(command)
-    
+
     let filteredMaps = maps |> List.filter(fun x -> filter.IsMatch x)
     if filteredMaps.Length = 0 then
       colorprintfn "$red[%A doesn't match any maps]" filter
@@ -282,9 +278,6 @@ let rec start () =
     else
       colorprintfn "There are %i results" filteredMaps.Length
       displayMaps Console.CursorTop 0 filteredMaps
-  //with _ ->
-  //  colorprintfn "$red[Regex was invalid.]"
-  //  start()
 
 let loading = [|"/"; "-"; "\\"; "|"|]
 
@@ -294,10 +287,7 @@ let initialiseCache () =
   let wc = new WebClient()
   let mutable alreadyParsedUsers:Map<int,userinfo> = Map.empty
   let _m = maps |> List.filter(fun x -> cache.ContainsKey x |> not)
-  //colorprintfn "$cyan[Updating cache]"
-  //colorprintf "$gray[Updating users]"
-  //Console.CursorTop <- Console.CursorTop - 1
-  //Console.CursorLeft <- 0
+
   _m |> List.iteri(fun i map ->
     Console.Title <- sprintf "Map Loader %s [initialising cache %i/%i]" version (i+1) (_m.Length)
     //colorprintf "$cyan[Updating cache (%i/%i) %s %s                  ]" (i+1) _m.Length loading.[i%4] map
@@ -319,17 +309,14 @@ let initialiseCache () =
         File.WriteAllText("cache.json", cache |> JsonConvert.SerializeObject)
         File.WriteAllText("users.json", users |> JsonConvert.SerializeObject)
     with
-    | e -> 
+    | e ->
       cache <- cache.Add(map, {userid=0; forumid=0})
-      //colorprintfn "$red[%s] for %s" e.Message map
   )
-  //Console.CursorLeft <- 0
   File.WriteAllText("cache.json", cache |> JsonConvert.SerializeObject)
-  //colorprintfn "$darkgray[Updated cache                                                        ]"
-  //colorprintfn "$cyan[Updating users]"
+
 
   let needed = cache |> Map.toList |> List.map(fun (_,v) -> v.userid) |> List.distinct |> List.filter(fun x -> users.ContainsKey x && users.[x].updated < unixtime)
-  
+
   //Get user info for these users, then combine with alreadyParsedUsers and overwrite users
   //let needed = (users |> Map.filter(fun k v -> alreadyParsedUsers.ContainsKey k |> not && v.updated < unixtime)) |> Map.toList |> List.map(fun (k,_) -> string k) |> List.append ids
   let _m2 =
@@ -340,8 +327,7 @@ let initialiseCache () =
     )
   users <- users |> mergeMaps alreadyParsedUsers |> mergeMaps _m2
   File.WriteAllText("users.json", users |> JsonConvert.SerializeObject)
-  //Console.CursorTop <- Console.CursorTop - 1
-  //colorprintfn "$darkgray[Updated users ]"
+
   Console.Title <- sprintf "Map Loader %s" version
 
 let () =
@@ -362,11 +348,10 @@ let () =
     let work:ThreadStart = initialiseCache
     let thread:Thread = new Thread(work)
     thread.Start()
-    //initialiseCache ()
 
   proc.StartInfo.FileName <- Config.tf2
 
-  Console.CancelKeyPress.AddHandler(fun _ e -> 
+  Console.CancelKeyPress.AddHandler(fun _ _ ->
     exitEvent.Set() |> ignore
     Environment.Exit 0
   )
