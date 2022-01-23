@@ -10,7 +10,9 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="AssemblyInfo.fs" />
+    <Compile Include="Schema.fs" />
     <Compile Include="Helpers.fs" />
+    <Compile Include="App.fs" />
     <Compile Include="Reference.fs" />
     <Compile Include="Program.fs" />
     <None Include="App.config" />

@@ -5,111 +5,90 @@ open System.Threading
 open Newtonsoft.Json
 open BlackFox.ColoredPrintf
 
+open MapLoader.Schema
 open MapLoader.Helpers
+open MapLoader.Reference
+open MapLoader.App
 
 let version = "a2"
 
 let exitEvent = new System.Threading.ManualResetEvent(false)
 let proc = new System.Diagnostics.Process()
 
-let display = [(1, "gray"); (2, "white"); (3, "magenta"); (4, "red"); (18, "darkgray"); (19, "green"); (29, "darkyellow"); (34, "white;darkmagenta"); (35, "white"); (36, "cyan"); (37, "red"); (38, "yellow")] |> Map.ofList
+let serializer = {
+  new Serializer with
+    [<RequiresExplicitTypeArguments>]
+    member _.Serialize<'t>(x:'t) = JsonConvert.SerializeObject(x)
+    [<RequiresExplicitTypeArguments>]
+    member _.Deserialize<'t>(x:string) = JsonConvert.DeserializeObject<'t>(x)
+}
 
-type config = {directories:string array; tf2:string; pageSize:int; showAuthor:bool; launchOptions:string}
+let fsWrapper = {
+    new FsWrapper with
+      member _.DirectoryExists path = Directory.Exists path
+      member _.DirectoryGetFiles path = Directory.GetFiles path
+      member _.FileExists path = File.Exists path
+      member _.ReadAllText path = File.ReadAllText path
+      member _.WriteAllText (path,text) = File.WriteAllText(path,text)
+      member _.GetFileInfo(path) =
+        let fi = FileInfo path
+        { new IFileInfo with
+            member _.CreationTime = fi.CreationTime
+            member _.Name = fi.Name
+        }
+}
 
-let get_tf2_folder () =
-  let def = @"C:\Program Files (x86)\Steam\steamapps\common\Team Fortress 2"
-  if Directory.Exists def then def
-  else
-    let rec getting () =
-      printf "Enter the path for your 'Team Fortress 2' folder >"
-      let dir = Console.ReadLine ()
-      if
-        Directory.Exists dir
-        && Path.Combine(dir, @"tf") |> Directory.Exists
-        && Path.Combine(dir, @"hl2.exe") |> File.Exists
-      then
-        dir
-      else
-        getting ()
-    getting ()
+let fsSerializer = {
+  new FsSerializer with
+      [<RequiresExplicitTypeArguments>]
+      member _.TryDeserializeFile<'t> path =
+        if fsWrapper.FileExists path then
+          fsWrapper.ReadAllText path
+          |> serializer.Deserialize<'t>
+          |> Some
+        else None
+      [<RequiresExplicitTypeArguments>]
+      member _.SerializeToFile (x:'t) path =
+        fsWrapper.WriteAllText(path, serializer.Serialize<'t> x)
+}
 
-let Config =
-  match deserializeFile<config> "config.json" with
-  | Some x -> x
-  | None ->
-    let tf2 = get_tf2_folder ()
-    let cfg:config = {
-      directories=[|
-        Path.Combine(tf2, @"tf\maps");
-        Path.Combine(tf2, @"tf\download\maps");
-      |];
-      tf2=Path.Combine(tf2, @"hl2.exe");
-      pageSize=25;
-      showAuthor=true;
-      launchOptions="-novid -windowed -noborder -condebug"
-    }
-    File.WriteAllText("config.json", JsonConvert.SerializeObject cfg)
-    cfg
 
-let unixtime = (DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1)).TotalSeconds |> int64) - 604800L
+let get_tf2_folder () = getTF2Dir (fsWrapper, fun () -> Console.ReadLine())
 
-type mapinfo = {userid: int; forumid:int}
-type userinfo = {username:string; userid: int; display:int; updated:int64}
+let config = get_tf2_folder() |> getConfig fsSerializer
+
+let unixtime = getUnixNow()
 
 let mutable cache =
-  deserializeFile<Map<string,mapinfo>> "cache.json"
+  fsSerializer.TryDeserializeFile<Map<string,mapinfo>> "cache.json"
   |> Option.defaultValue Map.empty
 
 let mutable users:Map<int,userinfo> =
-  deserializeFile<Map<int,userinfo>> "users.json"
+  fsSerializer.TryDeserializeFile<Map<int,userinfo>> "users.json"
   |> Option.defaultValue Map.empty
 
-type apiforumuser = {id:int; username:string; custom_title:string; display:int; avatar:string; updated:int64}
-type apimapinfo = {map:string; url:string; notes:string; forum_id:int; forum_version:int; forum_icon:string; forum_username:string; forum_user_id:int; forum_tagline:string; forum_user:apiforumuser; discord_user_handle:string; added:int64}
+let getMaps () =
+  getMaps fsWrapper config
 
-let maps,maps_files =
-  let files =
-    Config.directories
-    |> Seq.collect(fun dir ->
-      Directory.GetFiles dir
-      |> Seq.filter(fun x -> x.Contains ".bsp" && not (x.Contains ".bz2"))
-    )
-    |> List.ofSeq
-  let uNames =
-    files
-    |> List.map Path.GetFileNameWithoutExtension
-    |> List.sort
-    |> List.distinct
-  uNames, files |> List.map FileInfo
+let getUsername {showAuthor=showAuthor} (mapName:string) =
+  getUsername config cache users MapLoader.Reference.display mapName
 
-let getUsername (mapName:string) =
-  if Config.showAuthor then
-    let x: string option =
-      maybe {
-        let! mi = cache |> Map.tryFind mapName
-        let! user = users |> Map.tryFind mi.userid
-        match display |> Map.tryFind user.display with
-        | None -> return sprintf "| %s" user.username
-        | Some d -> return sprintf "¦ $%s[%s]" d user.username
-      }
-    x
-  else None
-  |> Option.defaultValue ""
-
+let maps,maps_files = getMaps()
 let rec start () =
+  let getUsername = getUsername config
   let rec displayMaps top page (maps:string List) =
     Console.CursorVisible <- false
     Console.ForegroundColor <- ConsoleColor.Gray
     Console.CursorLeft <- 0
 
     let redraw i =
-      if Console.CursorTop = (top + ((1 + page) * Config.pageSize)) then
-        colorprintfn "  $darkgray[[Load %i more...\]]" Config.pageSize
+      if Console.CursorTop = (top + ((1 + page) * config.pageSize)) then
+        colorprintfn "  $darkgray[[Load %i more...\]]" config.pageSize
       else
         colorprintf (ColorPrintFormat(sprintf "  %s %s" (maps.[Console.CursorTop - top]) (getUsername maps.[Console.CursorTop - top])))
       Console.CursorTop <- Console.CursorTop + i
       Console.CursorLeft <- 0
-      if Console.CursorTop = (top + ((1 + page) * Config.pageSize)) then
+      if Console.CursorTop = (top + ((1 + page) * config.pageSize)) then
         colorprintf "$green[> %s]                         " (maps.[Console.CursorTop - top])
         displayMaps top (page+1) maps
       else
@@ -118,8 +97,8 @@ let rec start () =
 
     let _m =
       maps
-      |> List.skip((page * Config.pageSize))
-    _m |> List.take(if _m.Length > Config.pageSize then Config.pageSize else _m.Length)
+      |> List.skip((page * config.pageSize))
+    _m |> List.take(if _m.Length > config.pageSize then config.pageSize else _m.Length)
     |> List.iteri(fun i x ->
       if i = 0 then
         //colorprintfn "$green[> %s]" x
@@ -128,23 +107,23 @@ let rec start () =
         //printfn "  %s" x
         colorprintfn (ColorPrintFormat(sprintf "  %s %s" x (getUsername x)))
     )
-    if _m.Length >= Config.pageSize-1 then
-      let _m2 = maps |> List.skip(((1+page) * Config.pageSize))
-      colorprintfn "  $darkgray[[Load %i more...\]]" (if _m2.Length >= Config.pageSize then Config.pageSize else _m2.Length)
-    Console.CursorTop <- top + (page * Config.pageSize)
+    if _m.Length >= config.pageSize-1 then
+      let _m2 = maps |> List.skip(((1+page) * config.pageSize))
+      colorprintfn "  $darkgray[[Load %i more...\]]" (if _m2.Length >= config.pageSize then config.pageSize else _m2.Length)
+    Console.CursorTop <- top + (page * config.pageSize)
     let mutable active = true
     while true do
       let key = Console.ReadKey true
       match key.Key with
       | ConsoleKey.UpArrow when Console.CursorTop > top ->
         redraw -1
-      | ConsoleKey.DownArrow when Console.CursorTop < (top + ((1 + page) * Config.pageSize) - (if _m.Length < Config.pageSize then Config.pageSize - _m.Length + 1 else 0)) ->
+      | ConsoleKey.DownArrow when Console.CursorTop < (top + ((1 + page) * config.pageSize) - (if _m.Length < config.pageSize then config.pageSize - _m.Length + 1 else 0)) ->
         redraw 1
       | ConsoleKey.Enter ->
         Console.Title <- sprintf "Playing %s" (maps.[Console.CursorTop - top])
         colorprintf (ColorPrintFormat(sprintf "$magenta[> %s] %s" (maps.[Console.CursorTop - top]) (getUsername maps.[Console.CursorTop - top])))
         Console.CursorLeft <- 0
-        proc.StartInfo.Arguments <- (sprintf "-hijack +map %s %s" (maps.[Console.CursorTop - top])) Config.launchOptions
+        proc.StartInfo.Arguments <- sprintf "-hijack +map %s %s" (maps.[Console.CursorTop - top]) config.launchOptions
         proc.Start() |> ignore
       | ConsoleKey.F when cache.ContainsKey (maps.[Console.CursorTop - top]) && cache.[maps.[Console.CursorTop - top]].forumid <> 0 ->
         sprintf @"https://tf2maps.net/downloads/%i/" cache.[maps.[Console.CursorTop - top]].forumid
@@ -153,7 +132,7 @@ let rec start () =
         sprintf @"https://tf2maps.net/downloads/authors/%i/" cache.[maps.[Console.CursorTop - top]].userid
         |> launchBrowser
       | ConsoleKey.Escape ->
-        Console.CursorTop <- (top + ((1 + page) * Config.pageSize) - (if _m.Length < Config.pageSize then Config.pageSize - _m.Length + 1 else 0)) + 1
+        Console.CursorTop <- (top + ((1 + page) * config.pageSize) - (if _m.Length < config.pageSize then config.pageSize - _m.Length + 1 else 0)) + 1
         colorprintfn "$yellow[Exiting current search]"
         active <- false
         start ()
@@ -344,12 +323,12 @@ let () =
         colorprintfn "$cyan[%s]" line
     )
 
-  if Config.showAuthor then
+  if config.showAuthor then
     let work:ThreadStart =  ThreadStart(initialiseCache)
     let thread:Thread = new Thread(work)
     thread.Start()
 
-  proc.StartInfo.FileName <- Config.tf2
+  proc.StartInfo.FileName <- config.tf2
 
   Console.CancelKeyPress.AddHandler(fun _ _ ->
     exitEvent.Set() |> ignore

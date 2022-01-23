@@ -8,13 +8,9 @@ module List =
             items |> List.skip i |> Some
         else None
 
-[<RequiresExplicitTypeArguments>]
-let deserializeFile<'t> fn =
-    if File.Exists fn then
-        File.ReadAllText fn
-        |> JsonConvert.DeserializeObject<'t>
-        |> Some
-    else None
+let getUnixNow () =
+    (System.DateTime.UtcNow.Subtract(System.DateTime(1970, 1, 1)).TotalSeconds |> int64) - 604800L
+
 
 // index, not page. pages IRL are numbered starting with zero
 let tryGetPage index pageSize items =

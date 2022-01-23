@@ -1,5 +1,7 @@
 module MapLoader.Reference
 
+let display = Map [1, "gray"; 2, "white"; 3, "magenta"; 4, "red"; 18, "darkgray"; 19, "green"; 29, "darkyellow"; 34, "white;darkmagenta"; 35, "white"; 36, "cyan"; 37, "red"; 38, "yellow"]
+
 let cmdDesc = Map [
         "cp", "Control Point"
         "koth", "King of the Hill"
