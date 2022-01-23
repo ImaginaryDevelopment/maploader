@@ -3,7 +3,7 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <AssemblyName>Map_Loader</AssemblyName>
-    <TargetFrameworkVersions>netnetcoreapp3.1;net472</TargetFrameworkVersions>
+    <TargetFrameworkVersions>netcoreapp3.1;net472</TargetFrameworkVersions>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <WarningsAsErrors>3239;$(WarningsAsErrors)</WarningsAsErrors>
     <Name>Map Loader</Name>
