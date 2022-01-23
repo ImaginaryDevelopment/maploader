@@ -3,7 +3,8 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <AssemblyName>Map_Loader</AssemblyName>
-    <TargetFrameworkVersions>netcoreapp3.1;net472</TargetFrameworkVersions>
+    <TargetFrameworkVersion Condition="'$(BuildingInsideVisualStudio)' != 'true'">net5.0</TargetFrameworkVersion>
+    <TargetFrameworkVersion Condition="'$(BuildingInsideVisualStudio)' == 'true'">net472</TargetFrameworkVersion>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <WarningsAsErrors>3239;$(WarningsAsErrors)</WarningsAsErrors>
     <Name>Map Loader</Name>
