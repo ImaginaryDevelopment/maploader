@@ -1,4 +1,4 @@
-open System
+﻿open System
 open System.IO
 open System.Net
 open System.Threading
@@ -117,9 +117,9 @@ let rec start () =
       Console.CursorLeft <- 0
 
     let _m =
-      maps 
-      |> List.skip((page * Config.pageSize)) 
-    _m |> List.take(if _m.Length > Config.pageSize then Config.pageSize else _m.Length) 
+      maps
+      |> List.skip((page * Config.pageSize))
+    _m |> List.take(if _m.Length > Config.pageSize then Config.pageSize else _m.Length)
     |> List.iteri(fun i x ->
       if i = 0 then
         //colorprintfn "$green[> %s]" x
@@ -215,16 +215,16 @@ let rec start () =
         | "tr" ->
           first <- ["tr"] |> List.append first
           firstDesc <- ["Training"] |> List.append firstDesc
-        | _ when x.StartsWith "a" -> 
+        | _ when x.StartsWith "a" ->
           last <- ["a"] |> List.append last
           lastDesc <- ["Alpha"] |> List.append lastDesc
-        | _ when x.StartsWith "b" -> 
+        | _ when x.StartsWith "b" ->
           last <- ["b"] |> List.append last
           lastDesc <- ["Beta"] |> List.append lastDesc
-        | "rc" -> 
+        | "rc" ->
           last <- ["rc"] |> List.append last
           lastDesc <- ["Release Candidate"] |> List.append lastDesc
-        | "final" | _ when x.StartsWith "f" -> 
+        | "final" | _ when x.StartsWith "f" ->
           last <- ["final"] |> List.append last
           lastDesc <- ["Final"] |> List.append lastDesc
         | _ -> ignore 0
@@ -259,7 +259,7 @@ let rec start () =
         |> List.sortByDescending(fun f -> f.CreationTime)
         |> List.map(fun f -> Path.GetFileNameWithoutExtension(f.Name))
         |> displayMaps Console.CursorTop 0
-      | "@date asc" -> 
+      | "@date asc" ->
         maps_files
         |> List.sortBy(fun f -> f.CreationTime)
         |> List.map(fun f -> Path.GetFileNameWithoutExtension(f.Name))
@@ -345,7 +345,7 @@ let () =
     )
 
   if Config.showAuthor then
-    let work:ThreadStart = initialiseCache
+    let work:ThreadStart =  ThreadStart(initialiseCache)
     let thread:Thread = new Thread(work)
     thread.Start()
 
